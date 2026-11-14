@@ -1434,6 +1434,7 @@ def main():
             result.append(f"{ip}#{code} Github测试 | {ip}")
         logger.debug(f"地区 {region} 格式化完成，包含 {len(sorted_ips)} 个IP")
     
+    result = result[:100]  # 基础版上限 100 条（定死，超出截断，组内已按延迟排序、留最快的）
     if result:
         # 立即保存基础文件
         with open('Senflare.txt', 'w', encoding='utf-8') as f:
@@ -1522,6 +1523,7 @@ def main():
                 pro_result.append(f"{ip}#{code} Github测试 | {ip}")
             logger.debug(f"高级地区 {region} 格式化完成，包含 {len(sorted_ips)} 个IP")
         
+        pro_result = pro_result[:100]  # 高级版上限 100 条（定死）
         if pro_result:
             with open('Senflare-Pro.txt', 'w', encoding='utf-8') as f:
                 f.write('\n'.join(pro_result))
