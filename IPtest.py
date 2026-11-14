@@ -87,9 +87,10 @@ CONFIG = {
     # 这三个域名是地域解析：权威按地区/运营商分线路返回不同 IP，
     # 靠 DoH + ECS 地域扫描（ecs_subnets.txt）把各线路的 IP 全量解出后取并集。
     "domains": [
-        'cf.090227.xyz',
+        'cdn2.bpcdn.cc',
         'saas.sin.fan',
         'cloudflare-ip.mofashi.ltd',
+        'nrt.xxxxxxxx.nyc.mn',
     ],
 
     # 🔍 网络测试配置
