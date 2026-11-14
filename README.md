@@ -18,16 +18,12 @@
 ## 📋 功能说明
 
 ### 1. IP采集
-从多个源采集Cloudflare IP地址：
-- ✅ 行雺
-- ✅ Ymyuuu
-- ✅ 麒麟
-- ✅ Hostmonit
-- ✅ Mingyu API
-- ✅ 好哥哥
-- ✅ 微测网
-- ✅ VPS789
-- ✅ CMLiussss (电信/移动)
+IP 唯一来源：解析三个优选域名（不再抓取公开采集源）：
+- ✅ `cf.090227.xyz`
+- ✅ `saas.sin.fan`
+- ✅ `cloudflare-ip.mofashi.ltd`
+
+这三个域名是地域解析，权威按地区/运营商分线路返回不同 IP：先用无 ECS 多源 DoH 跟 CNAME 拿基准结果，再用 `ecs_subnets.txt` 里的子网逐个带 ECS 向 Google DoH 查询、连域名本身一起扫，把各线路 IP 全量并集，只收公网 IPv4。
 
 ### 2. 并发检测
 - 使用20个并发线程检测IP可用性
@@ -96,7 +92,7 @@ on:
 ### 核心配置
 ```python
 CONFIG = {
-    "ip_sources": [...],            # IP采集源列表
+    "domains": [...],               # IP来源域名（就这三个）
     "test_ports": [443],            # 测试核心端口
     "timeout": 8,                   # IP采集超时时间
     "api_timeout": 5,               # API查询超时时间

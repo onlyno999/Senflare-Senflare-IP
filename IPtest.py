@@ -53,6 +53,7 @@ import os
 import time
 import socket
 import json
+import ipaddress
 import logging
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -82,25 +83,13 @@ logger = logging.getLogger(__name__)
 # ===== 核心配置 =====
 # 程序运行的核心参数配置，可根据需要调整
 CONFIG = {
-    # 📥 IP源配置 - 多API源并发采集获取IP地址
-    "ip_sources": [
-        'https://cf.hyli.xyz/', # 行雺
-        'https://raw.githubusercontent.com/ymyuuu/IPDB/main/BestCF/bestcfv4.txt', # Ymyuuu
-        'https://ipdb.api.030101.xyz/?type=bestcf&country=true', # Ymyuuu（备用）
-        'https://api.uouin.com/cloudflare.html', # 麒麟
-        'https://api.urlce.com/cloudflare.html', # 麒麟（备用）
-        'https://addressesapi.090227.xyz/CloudFlareYes', # Hostmonit
-        'https://cf.090227.xyz/CloudFlareYes', # Hostmonit（备用）
-        # 'https://stock.hostmonit.com/CloudFlareYes', # Hostmonit
-        # 'https://ipdb.api.030101.xyz/?type=bestproxy&country=true', # Mingyu
-        'https://ip.haogege.xyz/', # 好哥哥
-        'https://vps789.com/openApi/cfIpTop20', # VPS789-综合排名前20
-        'https://vps789.com/openApi/cfIpApi', # VPS789-动态获取接口
-        'https://hhhhh.eu.org/vps789.txt', # VPS789（备用）
-        'https://www.wetest.vip/page/cloudflare/address_v4.html', # 微测网
-        'https://www.wetest.vip/page/cloudflare/total_v4.html',   # 微测网 
-        'https://cf.090227.xyz/cmcc', # CMLiussss-电信
-        'https://cf.090227.xyz/ct', # CMLiussss-移动
+    # 📥 IP来源配置 - 只解析这三个优选域名（用户定版，就留这三个地址）
+    # 这三个域名是地域解析：权威按地区/运营商分线路返回不同 IP，
+    # 靠 DoH + ECS 地域扫描（ecs_subnets.txt）把各线路的 IP 全量解出后取并集。
+    "domains": [
+        'cf.090227.xyz',
+        'saas.sin.fan',
+        'cloudflare-ip.mofashi.ltd',
     ],
 
     # 🔍 网络测试配置
@@ -829,6 +818,101 @@ def get_regions_concurrently(ips, max_workers=None):
     logger.info(f"🌍 地区识别完成，处理了 {len(results)} 个IP，总耗时: {total_time:.1f}秒")
     return results
 
+
+# ===== 域名解析模块（IP 唯一来源） =====
+# 只解析 CONFIG["domains"] 里的三个域名：
+# - 无 ECS 多源 DoH（Cloudflare/Google/doh.pub/nextdns）拿基准结果并跟 CNAME；
+# - 再逐个 ECS 子网（ecs_subnets.txt）带 edns_client_subnet 向 Google DoH 查询，
+#   连域名本身一起扫（有的域名带 ECS 时权威直接回该线路 A 池，只扫 CNAME 目标会漏）；
+# - 只放行公网 IPv4（127.0.0.1 那类回环/私网/198.18 假 IP 直接屏蔽），不用 IPv6。
+GOOGLE_DOH = "https://dns.google/resolve"
+PLAIN_DOH = [
+    "https://cloudflare-dns.com/dns-query",
+    GOOGLE_DOH,
+    "https://doh.pub/dns-query",
+    "https://dns.nextdns.io/dns-query",
+]
+ECS_WORKERS = 24
+
+
+def _doh_answers(name, base=GOOGLE_DOH, ecs=None):
+    params = {"name": name, "type": "A"}
+    if ecs:
+        params["edns_client_subnet"] = ecs
+    try:
+        resp = session.get(base, params=params, headers={"accept": "application/dns-json"}, timeout=15)
+        if resp.status_code != 200:
+            return []
+        return resp.json().get("Answer") or []
+    except Exception:
+        return []
+
+
+def _is_public_ipv4(value):
+    try:
+        ip = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return ip.version == 4 and ip.is_global and not ip.is_multicast
+
+
+def _collect_answers(answers, ips, cnames):
+    for ans in answers:
+        data = str(ans.get("data", "")).strip().rstrip(".")
+        if ans.get("type") == 1:
+            if _is_public_ipv4(data):
+                ips.add(data)
+        elif ans.get("type") == 5:
+            cnames.add(data)
+
+
+def _final_targets(domain):
+    targets = {domain}
+    for _ in range(8):
+        nxt = set()
+        for name in list(targets):
+            ips, cnames = set(), set()
+            for base in PLAIN_DOH:
+                _collect_answers(_doh_answers(name, base), ips, cnames)
+            nxt |= cnames
+        if not nxt:
+            break
+        targets = nxt
+    return targets
+
+
+def _load_ecs_subnets():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ecs_subnets.txt")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return [l.strip() for l in f if l.strip() and not l.strip().startswith("#")]
+    except OSError:
+        logger.warning("⚠️ ecs_subnets.txt 读取失败，只做基准解析")
+        return []
+
+
+def resolve_domain_ips(domain, ecs_list):
+    """全量解析一个域名在各线路的 IPv4，返回 IP 集合。"""
+    ips, cnames = set(), set()
+    targets = _final_targets(domain)
+    names = {domain} | targets
+    for name in names:
+        for base in PLAIN_DOH:
+            _collect_answers(_doh_answers(name, base), ips, cnames)
+
+    def one(ecs):
+        got, junk = set(), set()
+        for name in names:
+            _collect_answers(_doh_answers(name, GOOGLE_DOH, ecs), got, junk)
+        return got
+
+    if ecs_list:
+        with ThreadPoolExecutor(max_workers=ECS_WORKERS) as ex:
+            for got in ex.map(one, ecs_list):
+                ips |= got
+    return ips
+
+
 # ===== 主程序模块 =====
 # 程序主流程控制，协调各个模块完成IP采集、检测、排序和输出
 
@@ -865,51 +949,20 @@ def main():
     successful_sources = 0
     failed_sources = 0
     
-    # 采集IP源
-    for i, url in enumerate(CONFIG["ip_sources"]):
+    # 解析 CONFIG["domains"] 里的三个域名（唯一 IP 来源）
+    ecs_list = _load_ecs_subnets()
+    logger.info(f"🌐 ECS 地域子网 {len(ecs_list)} 个，开始全量解析 {len(CONFIG['domains'])} 个域名")
+    for domain in CONFIG["domains"]:
         try:
-            logger.info(f"🔍 从 {url} 采集...")
-            # 添加请求间隔，避免频率限制
-            if i > 0:
-                time.sleep(CONFIG["query_interval"])  # 使用配置的间隔时间
-            resp = session.get(url, timeout=CONFIG["timeout"])  # 使用配置的超时时间
-            if resp.status_code == 200:
-                # 提取并验证IPv4地址
-                ips = re.findall(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b', resp.text)
-                valid_ips = [
-                    ip for ip in ips 
-                    if all(0 <= int(part) <= 255 for part in ip.split('.'))
-                ]
-                
-                # 调试信息：记录原始找到的IP数量
-                if len(ips) > 0 and len(valid_ips) == 0:
-                    logger.debug(f"从 {url} 找到 {len(ips)} 个IP，但验证后为0个")
-                
-                # 如果正则表达式没有找到IP，尝试按行分割查找
-                if len(valid_ips) == 0:
-                    lines = resp.text.strip().split('\n')
-                    for line in lines:
-                        line = line.strip()
-                        # 检查是否是纯IP地址行
-                        if re.match(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$', line):
-                            if all(0 <= int(part) <= 255 for part in line.split('.')):
-                                valid_ips.append(line)
-                
-                all_ips.extend(valid_ips)
-                successful_sources += 1
-                logger.info(f"✅ 成功采集 {len(valid_ips)} 个有效IP地址")
-            elif resp.status_code == 403:
-                failed_sources += 1
-                logger.warning(f"⚠️ 被限制访问（状态码 403），跳过此源")
-            else:
-                failed_sources += 1
-                logger.warning(f"❌ 失败（状态码 {resp.status_code}）")
+            logger.info(f"🔍 解析 {domain} ...")
+            domain_ips = resolve_domain_ips(domain, ecs_list)
+            all_ips.extend(sorted(domain_ips))
+            successful_sources += 1
+            logger.info(f"✅ {domain} 解析到 {len(domain_ips)} 个 IP")
         except Exception as e:
             failed_sources += 1
-            error_msg = str(e)[:50]
-            logger.error(f"❌ 出错: {error_msg}")
-    
-    logger.info(f"📊 采集统计: 成功 {successful_sources} 个源，失败 {failed_sources} 个源")
+            logger.error(f"❌ {domain} 解析出错: {str(e)[:50]}")
+    logger.info(f"📊 采集统计: 成功 {successful_sources} 个域名，失败 {failed_sources} 个域名")
 
     # 3. IP去重与排序
     # 对采集到的IP进行去重和排序，确保唯一性
