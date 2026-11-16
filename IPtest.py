@@ -91,7 +91,6 @@ CONFIG = {
         'saas.sin.fan',
         'cloudflare-ip.mofashi.ltd',
         'nrt.xxxxxxxx.nyc.mn',
-        'lax.xxxxxxxx.nyc.mn',
     ],
 
     # 🔍 网络测试配置
