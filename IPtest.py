@@ -1954,7 +1954,7 @@ def main():
         # 同一地区内按延迟排序（更快的在前）
         sorted_ips = sorted(region_groups[region], key=lambda x: x[2])  # 按min_delay排序
         for idx, (ip, code, min_delay, avg_delay) in enumerate(sorted_ips, 1):
-            result.append(f"{ip}#{idiom_by_ip[ip]}| {ip}")
+            result.append(f"{ip}# {idiom_by_ip[ip]}")
         logger.debug(f"地区 {region} 格式化完成，包含 {len(sorted_ips)} 个IP")
     
     result = result[:100]  # 基础版上限 100 条（定死，超出截断，组内已按延迟排序、留最快的）
@@ -2043,7 +2043,7 @@ def main():
             # 同一地区内按延迟排序（更快的在前）
             sorted_ips = sorted(pro_region_groups[region], key=lambda x: x[2])  # 按min_delay排序
             for idx, (ip, code, min_delay, avg_delay) in enumerate(sorted_ips, 1):
-                pro_result.append(f"{ip}#{idiom_by_ip[ip]}| {ip}")
+                pro_result.append(f"{ip}# {idiom_by_ip[ip]}")
             logger.debug(f"高级地区 {region} 格式化完成，包含 {len(sorted_ips)} 个IP")
         
         pro_result = pro_result[:100]  # 高级版上限 100 条（定死）
