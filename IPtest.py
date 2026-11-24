@@ -173,7 +173,7 @@ region_cache = {}
 
 # ===== 固定节点名（400 条） =====
 # 节点显示名固定使用这 400 条爱国爱党爱人民宣传语录（用户亲发原文：前 200 条 2026-11-24 定版、后 200 条同日续补），顺序写死；
-# 同一份名单另存仓库根目录 node_names.txt（一行一条），改名单时两处同步。
+# 同一份名单另存仓库根目录 node_names.txt（一行一条）：程序优先按该文件的顺序排列，内置名单只作兜底。
 # 第 N 个 IP 永远配第 N 条，以后更新只换 IP、文字不动。
 # 当前 IP 上限 100 个，只用到前 100 条；后 300 条是备份，以后放开上限直接续用。
 # 同一个 IP 在基础版和高级版中使用同一条（按基础版顺序分配）。
@@ -579,6 +579,17 @@ FIXED_NODE_NAMES = [
     "共绘山河盛景，同筑时代丰碑。",
     "永怀赤子之心，矢志强国有我。",
 ]
+
+# 名单以同目录的 node_names.txt 为准（一行一条）：文件存在且非空时，排列顺序按文件来；
+# 上面的内置名单只作文件缺失时的兜底。
+try:
+    _names_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'node_names.txt')
+    with open(_names_path, encoding='utf-8') as _nf:
+        _file_names = [line.strip() for line in _nf if line.strip()]
+    if _file_names:
+        FIXED_NODE_NAMES = _file_names
+except Exception:
+    pass
 
 # ===== 网络会话配置 =====
 # 配置HTTP会话，优化网络请求性能
