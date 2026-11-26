@@ -88,10 +88,10 @@ CONFIG = {
     # 靠 DoH + ECS 地域扫描（ecs_subnets.txt）把各线路的 IP 全量解出后取并集。
     "domains": [
         'lax.xxxxxxxx.nyc.mn',
+        'nrt.xxxxxxxx.nyc.mn',
         'fra.xxxxxxxx.nyc.mn',
         'saas.sin.fan',
         'cloudflare-ip.mofashi.ltd',
-        'nrt.xxxxxxxx.nyc.mn',
     ],
 
     # 🔍 网络测试配置
