@@ -1800,10 +1800,10 @@ def main():
     # 对采集到的IP进行去重和排序，确保唯一性
     unique_ips = sorted(list(set(all_ips)), key=lambda x: [int(p) for p in x.split('.')])
     logger.info(f"🔢 去重后共 {len(unique_ips)} 个唯一IP地址")
-    # 总量上限 100 个（定死）：不管以后加多少个域名，全部域名解出的 IP 合并去重后最多留 100 个
-    if len(unique_ips) > 100:
-        unique_ips = unique_ips[:100]
-        logger.info("✂️ 已截断为 100 个（总量上限）")
+    # 总量上限 200 个（定死）：不管以后加多少个域名，全部域名解出的 IP 合并去重后最多留 200 个
+    if len(unique_ips) > 200:
+        unique_ips = unique_ips[:200]
+        logger.info("✂️ 已截断为 200 个（总量上限）")
     
     # 检查是否有IP需要检测
     if not unique_ips:
